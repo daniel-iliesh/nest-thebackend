@@ -3,6 +3,15 @@
   "rootDir": ".",
   "testEnvironment": "node",
   "testRegex": ".e2e-spec.ts$",
+  "moduleNameMapper": {
+    "^@/(.*)$": "<rootDir>/../src/$1",
+    "^src/(.*)$": "<rootDir>/../src/$1",
+    "^@octokit/rest$": "<rootDir>/mocks/octokit-rest",
+    "^@octokit/request-error$": "<rootDir>/mocks/octokit-request-error",
+    "^resumed$": "<rootDir>/mocks/resumed",
+    "^jsonresume-theme-even$": "<rootDir>/mocks/jsonresume-theme-even",
+    "^puppeteer$": "<rootDir>/mocks/puppeteer"
+  },
   "transform": {
     "^.+\\.(t|j)s$": "ts-jest"
   }

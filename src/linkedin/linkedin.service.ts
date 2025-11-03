@@ -1,19 +1,23 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { AxiosInstance } from 'axios';
 import { CustomModule } from 'src/app.interface';
+
+interface LinkedinHttpClient {
+  get<T = unknown>(url: string): Promise<T>;
+  post<T = unknown>(url: string): Promise<T>;
+}
 
 @Injectable()
 export class LinkedinService {
   constructor(
     @Inject(CustomModule.LINKEDIN_INSTANCE)
-    private readonly linkedinInstance: AxiosInstance,
+    private readonly linkedinInstance: LinkedinHttpClient,
   ) {}
 
-  async getProfile(): Promise<any> {
+  getProfile(): Promise<unknown> {
     return this.linkedinInstance.get('/me');
   }
 
-  async callback(): Promise<any> {
+  callback(): Promise<unknown> {
     return this.linkedinInstance.post('/callback');
   }
 }

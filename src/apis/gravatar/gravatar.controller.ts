@@ -5,7 +5,7 @@ import { GravatarService } from './gravatar.service';
 export class GravatarController {
   constructor(private readonly gravatarService: GravatarService) {}
 
-  @Get("/")
+  @Get('/')
   getProfile() {
     return this.gravatarService.getProfile();
   }

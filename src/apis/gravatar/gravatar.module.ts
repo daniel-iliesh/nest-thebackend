@@ -12,18 +12,16 @@ import axios from 'axios';
       useFactory: (configService: ConfigService) => {
         const gravatarApiKey = configService.get<string>('GRAVATAR_API_KEY');
         if (!gravatarApiKey) {
-          throw new Error(
-            'GRAVATAR_API_KEY environment variable is not set.',
-          );
+          throw new Error('GRAVATAR_API_KEY environment variable is not set.');
         }
         const instance = axios.create({
-            baseURL: "https://api.gravatar.com/v3",
-            headers: {
-                'Content-Type': 'application/json',
-                Authorization: `Bearer ${gravatarApiKey}`
-            },
-            timeout: 10000
-        })
+          baseURL: 'https://api.gravatar.com/v3',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${gravatarApiKey}`,
+          },
+          timeout: 10000,
+        });
         return instance;
       },
       inject: [ConfigService],

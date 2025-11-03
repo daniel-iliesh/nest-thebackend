@@ -21,6 +21,7 @@
   },
   "dependencies": {
     "@fastify/static": "^8.2.0",
+    "@jsonresume/schema": "^1.2.1",
     "@nestjs/common": "^11.0.1",
     "@nestjs/config": "^4.0.2",
     "@nestjs/core": "^11.0.1",
@@ -29,9 +30,12 @@
     "@nestjs/swagger": "^11.2.0",
     "@octokit/request-error": "^7.0.0",
     "@octokit/rest": "^22.0.0",
-    "@types/axios": "^0.14.4",
     "axios": "^1.10.0",
+    "jsonresume-theme-even": "^0.26.1",
+    "jsonschema": "^1.4.1",
+    "puppeteer": "^24.27.0",
     "reflect-metadata": "^0.2.2",
+    "resumed": "^6.1.0",
     "rxjs": "^7.8.1"
   },
   "devDependencies": {
@@ -45,6 +49,7 @@
     "@types/express": "^5.0.0",
     "@types/jest": "^29.5.14",
     "@types/node": "^22.10.7",
+    "@types/puppeteer": "^5.4.7",
     "@types/supertest": "^6.0.2",
     "eslint": "^9.18.0",
     "eslint-config-prettier": "^10.0.1",
