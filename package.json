@@ -21,6 +21,8 @@
   },
   "dependencies": {
     "@fastify/static": "^8.2.0",
+    "@jsonresume/jsonresume-theme-class": "^0.5.1",
+    "@jsonresume/jsonresume-theme-consultant-polished": "^1.0.0",
     "@jsonresume/schema": "^1.2.1",
     "@nestjs/common": "^11.0.1",
     "@nestjs/config": "^4.0.2",
@@ -31,12 +33,20 @@
     "@octokit/request-error": "^7.0.0",
     "@octokit/rest": "^22.0.0",
     "axios": "^1.10.0",
+    "esbuild": "^0.24.0",
+    "jsonresume-theme-elegant": "^1.16.1",
+    "jsonresume-theme-eloquent": "^5.0.0",
     "jsonresume-theme-even": "^0.26.1",
+    "jsonresume-theme-kendall": "^0.2.0",
+    "jsonresume-theme-stackoverflow": "^2.1.0",
     "jsonschema": "^1.4.1",
     "puppeteer": "^24.27.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
     "reflect-metadata": "^0.2.2",
     "resumed": "^6.1.0",
-    "rxjs": "^7.8.1"
+    "rxjs": "^7.8.1",
+    "styled-components": "^6.1.11"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.2.0",
