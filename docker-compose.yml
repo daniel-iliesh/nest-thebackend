@@ -1,9 +1,8 @@
-version: '3.8'
 services:
   nest-app:
     networks:
-      - npm-network
       - default
+      - npm_default
     build:
       context: .
       dockerfile: Dockerfile
@@ -23,4 +22,7 @@ services:
       GRAVATAR_STUB: ${GRAVATAR_STUB}
 
 networks:
-  npm-network:
+  default:
+    driver: bridge
+  npm_default:
+    external: true
