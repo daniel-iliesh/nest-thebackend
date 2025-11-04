@@ -1,6 +1,9 @@
 version: '3.8'
 services:
   nest-app:
+    networks:
+      - npm-network
+      - default
     build:
       context: .
       dockerfile: Dockerfile
@@ -18,3 +21,6 @@ services:
       LINKEDIN_ACCESS_TOKEN: ${LINKEDIN_ACCESS_TOKEN}
       GRAVATAR_API_KEY: ${GRAVATAR_API_KEY}
       GRAVATAR_STUB: ${GRAVATAR_STUB}
+
+networks:
+  npm-network:
