@@ -1,16 +1,22 @@
-FROM node:20-slim AS deps
+FROM node:20-slim AS base
+ENV PNPM_HOME="/root/.local/share/pnpm"
+ENV PATH="$PNPM_HOME:$PATH"
+RUN corepack enable
+
+FROM base AS deps
 WORKDIR /app
 ENV PUPPETEER_SKIP_DOWNLOAD=1
-COPY package.json package-lock.json ./
-RUN npm ci
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY packages ./packages
+RUN pnpm install --frozen-lockfile
 
-FROM node:20-slim AS builder
+FROM base AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-RUN npm run build
+RUN pnpm run build
 
-FROM node:20-slim AS runner
+FROM base AS runner
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -51,12 +57,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 ENV PUPPETEER_CACHE_DIR=/app/.cache/puppeteer
 
-COPY package.json package-lock.json ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY packages ./packages
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
 
-RUN npm prune --omit=dev
-RUN mkdir -p ${PUPPETEER_CACHE_DIR} && npx --yes puppeteer browsers install chrome
+RUN pnpm prune --prod
+RUN mkdir -p ${PUPPETEER_CACHE_DIR} && pnpm exec puppeteer browsers install chrome
 
 EXPOSE 8080
 CMD ["node", "dist/main"]

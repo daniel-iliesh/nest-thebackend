@@ -633,12 +633,19 @@ export class ResumeService {
     patchedContent = patchedContent
       .replace(
         /__toESM\(require\("styled-components"\),\s*1\)/g,
-        '__ensureStyledComponentsDefault(__toESM(require("styled-components"), 1))',
+        (match) => `__ensureStyledComponentsDefault(${match})`,
       )
-      .replace(
-        /require\("styled-components"\)/g,
-        '__ensureStyledComponentsDefault(require("styled-components"))',
-      );
+      .replace(/require\("styled-components"\)/g, (match, offset, source) => {
+        const trimmed = source.slice(0, offset).trimEnd();
+        if (
+          trimmed.endsWith('__ensureStyledComponentsDefault(') ||
+          trimmed.endsWith('__ensureStyledComponentsDefault(__toESM(')
+        ) {
+          return match;
+        }
+
+        return `__ensureStyledComponentsDefault(${match})`;
+      });
 
     if (patchedContent !== content) {
       await writeFile(outfile, patchedContent, 'utf8');
