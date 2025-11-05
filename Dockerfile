@@ -1,7 +1,8 @@
 FROM node:20-slim AS base
+ARG PNPM_VERSION=8.15.7
 ENV PNPM_HOME="/root/.local/share/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
-RUN corepack enable
+RUN corepack enable && corepack prepare "pnpm@${PNPM_VERSION}" --activate
 
 FROM base AS deps
 WORKDIR /app
