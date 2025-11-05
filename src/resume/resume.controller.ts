@@ -56,15 +56,13 @@ export class ResumeController {
         theme: resolvedTheme,
       });
 
-      reply
-        .header('Content-Type', 'application/json; charset=utf-8')
-        .send({
-          id,
-          theme: resolvedTheme,
-          viewUrl: `/resume/${id}`,
-          pdfUrl: `/resume/${id}?format=pdf`,
-          html,
-        });
+      reply.header('Content-Type', 'application/json; charset=utf-8').send({
+        id,
+        theme: resolvedTheme,
+        viewUrl: `/resume/${id}`,
+        pdfUrl: `/resume/${id}?format=pdf`,
+        html,
+      });
       return;
     }
 
@@ -107,9 +105,7 @@ export class ResumeController {
     if (sanitizedFormat === 'html') {
       const html = await this.resumeService.loadPersistedHtml(id);
 
-      reply
-        .header('Content-Type', 'text/html; charset=utf-8')
-        .send(html);
+      reply.header('Content-Type', 'text/html; charset=utf-8').send(html);
       return;
     }
 

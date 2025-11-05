@@ -1,0 +1,24 @@
+{
+  "private": false,
+  "name": "@jsonresume/jsonresume-theme-professional",
+  "version": "1.0.18",
+  "main": "./src/index.js",
+  "license": "MIT",
+  "devDependencies": {
+    "@repo/eslint-config-custom": "workspace:^",
+    "react": "^19.2.0",
+    "styled-components": "^6.1.19"
+  },
+  "peerDependencies": {
+    "styled-components": "^6"
+  },
+  "scripts": {
+    "lint": "eslint src || exit 0",
+    "publish": "npm publish --access public"
+  },
+  "dependencies": {
+    "marked": "^16.3.0",
+    "prismjs": "^1.29.0",
+    "react-icons": "^5.0.1"
+  }
+}

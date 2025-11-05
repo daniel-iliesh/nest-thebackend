@@ -15,48 +15,14 @@ import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+
+import {
+  RESUME_THEME_REGISTRY,
+  ResumeThemeKey,
+  DEFAULT_RESUME_THEME,
+} from './theme-registry';
 
 export type ResumeFormat = 'pdf';
-export type ResumeThemeKey = keyof typeof RESUME_THEME_REGISTRY;
-
-type ResumeThemeConfig = {
-  packageName: string;
-  aliases?: readonly string[];
-};
-
-const RESUME_THEME_REGISTRY = {
-  even: {
-    packageName: 'jsonresume-theme-even',
-    aliases: ['jsonresume-theme-even'],
-  },
-  'consultant-polished': {
-    packageName: '@jsonresume/jsonresume-theme-consultant-polished',
-    aliases: ['@jsonresume/jsonresume-theme-consultant-polished'],
-  },
-  class: {
-    packageName: '@jsonresume/jsonresume-theme-class',
-    aliases: ['@jsonresume/jsonresume-theme-class'],
-  },
-  eloquent: {
-    packageName: 'jsonresume-theme-eloquent',
-    aliases: ['jsonresume-theme-eloquent'],
-  },
-  elegant: {
-    packageName: 'jsonresume-theme-elegant',
-    aliases: ['jsonresume-theme-elegant'],
-  },
-  stackoverflow: {
-    packageName: 'jsonresume-theme-stackoverflow',
-    aliases: ['jsonresume-theme-stackoverflow'],
-  },
-  kendall: {
-    packageName: 'jsonresume-theme-kendall',
-    aliases: ['jsonresume-theme-kendall'],
-  },
-} as const satisfies Record<string, ResumeThemeConfig>;
-
-export const DEFAULT_RESUME_THEME: ResumeThemeKey = 'elegant';
 
 type ResumePayload = Record<string, unknown>;
 
@@ -73,6 +39,11 @@ export class ResumeService {
   private readonly schema = resumeSchema as unknown as JSONSchema7;
   private readonly require = createRequire(__filename);
   private readonly storageRoot = join(process.cwd(), 'storage', 'resumes');
+  private readonly bundleCacheRoot = join(
+    process.cwd(),
+    '.cache',
+    'resume-themes',
+  );
 
   private readonly themePromises = new Map<string, Promise<unknown>>();
   private readonly bundledThemeUrls = new Map<string, Promise<string>>();
@@ -96,9 +67,13 @@ export class ResumeService {
         `Rendered resume HTML with theme (${resolvedThemeKey}). Proceeding to PDF conversion.`,
       );
       this.logger.debug(`Generated HTML length: ${html.length}`);
-      this.logger.debug(`Rendered HTML preview (first 500 chars): ${html.substring(0, 500)}`);
+      this.logger.debug(
+        `Rendered HTML preview (first 500 chars): ${html.substring(0, 500)}`,
+      );
       if (html.includes('&lt;') || html.includes('&gt;')) {
-        this.logger.warn('Rendered HTML contains escaped angle brackets (&lt; or &gt;).');
+        this.logger.warn(
+          'Rendered HTML contains escaped angle brackets (&lt; or &gt;).',
+        );
       }
 
       return await this.printHtmlToPdf(html);
@@ -261,12 +236,14 @@ export class ResumeService {
 
   private async loadThemeModule(packageName: string): Promise<unknown> {
     try {
-      const module = await dynamicImportModule<unknown>(packageName);
+      // Try ESM import first for themes that support it
+      const module = await import(packageName);
       return this.extractDefault<unknown>(module);
     } catch (error) {
+      // Fallback to bundling if ESM import fails
       if (this.shouldRetryWithBundledTheme(error)) {
         this.logger.debug(
-          `Falling back to bundling resume theme module (${packageName}).`,
+          `ESM import failed, falling back to bundling resume theme module (${packageName}).`,
         );
         const bundledThemeUrl = await this.getBundledThemeUrl(packageName);
         const module = await dynamicImportModule<unknown>(bundledThemeUrl);
@@ -320,7 +297,10 @@ export class ResumeService {
     packageName: string;
   } {
     const explicitTheme = this.normalizeThemeKey(themeKey, false);
-    const metaTheme = this.normalizeThemeKey(this.extractMetaTheme(resume), false);
+    const metaTheme = this.normalizeThemeKey(
+      this.extractMetaTheme(resume),
+      false,
+    );
     const candidates = [explicitTheme, metaTheme, DEFAULT_RESUME_THEME].filter(
       (value): value is string => Boolean(value),
     );
@@ -329,7 +309,9 @@ export class ResumeService {
       const resolvedEntry = Object.entries(RESUME_THEME_REGISTRY).find(
         ([key, config]) =>
           key === normalizedKey ||
-          config.aliases?.some((alias) => alias.toLowerCase() === normalizedKey),
+          config.aliases?.some(
+            (alias) => alias.toLowerCase() === normalizedKey,
+          ),
       );
 
       if (resolvedEntry) {
@@ -448,7 +430,9 @@ export class ResumeService {
         )}`,
       );
       if (html.includes('&lt;') || html.includes('&gt;')) {
-        this.logger.warn('HTML passed to Puppeteer contains escaped angle brackets.');
+        this.logger.warn(
+          'HTML passed to Puppeteer contains escaped angle brackets.',
+        );
       }
       await page.setContent(html, { waitUntil: 'networkidle0' });
       const pageContent = await page.content();
@@ -579,7 +563,8 @@ export class ResumeService {
 
   private async bundleThemePackage(packageName: string): Promise<string> {
     const entryPoint = this.require.resolve(packageName);
-    const tempDirectory = await mkdtemp(join(tmpdir(), 'resume-theme-'));
+    await mkdir(this.bundleCacheRoot, { recursive: true });
+    const tempDirectory = await mkdtemp(join(this.bundleCacheRoot, 'tmp-'));
     const outfile = join(tempDirectory, 'theme.cjs');
 
     await build({
@@ -597,6 +582,13 @@ export class ResumeService {
         '.js': 'jsx',
         '.jsx': 'jsx',
       },
+      external: [
+        'react',
+        'react-dom',
+        'react-dom/server',
+        'react/jsx-runtime',
+        'styled-components',
+      ],
     });
 
     await this.patchBundledTheme(outfile);
@@ -606,9 +598,47 @@ export class ResumeService {
 
   private async patchBundledTheme(outfile: string): Promise<void> {
     const content = await readFile(outfile, 'utf8');
-    const patchedContent = content
+    let patchedContent = content
       .replace(/new Date\d+/g, 'new Date')
       .replace(/new Date\$/g, 'new Date');
+
+    if (!patchedContent.includes('function __ensureStyledComponentsDefault')) {
+      const helper = [
+        'function __ensureStyledComponentsDefault(mod) {',
+        '  if (!mod) {',
+        '    return mod;',
+        '  }',
+        '  const base = mod.default && typeof mod.default === "function"',
+        '    ? mod.default',
+        '    : mod.default && mod.default.default && typeof mod.default.default === "function"',
+        '      ? mod.default.default',
+        '      : null;',
+        '  if (base) {',
+        '    mod.default = base;',
+        '    return Object.assign(base, mod);',
+        '  }',
+        '  const scoped = require("styled-components");',
+        '  const scopedDefault = scoped && typeof scoped.default === "function" ? scoped.default : scoped;',
+        '  if (typeof scopedDefault === "function") {',
+        '    mod.default = scopedDefault;',
+        '    return Object.assign(scopedDefault, mod);',
+        '  }',
+        '  return mod;',
+        '}',
+      ].join('\n');
+
+      patchedContent = `${helper}\n${patchedContent}`;
+    }
+
+    patchedContent = patchedContent
+      .replace(
+        /__toESM\(require\("styled-components"\),\s*1\)/g,
+        '__ensureStyledComponentsDefault(__toESM(require("styled-components"), 1))',
+      )
+      .replace(
+        /require\("styled-components"\)/g,
+        '__ensureStyledComponentsDefault(require("styled-components"))',
+      );
 
     if (patchedContent !== content) {
       await writeFile(outfile, patchedContent, 'utf8');
@@ -648,7 +678,7 @@ export class ResumeService {
       .replace(/&amp;/g, '&');
 
     // Ensure protocol-relative URLs load correctly in headless Chromium
-    normalized = normalized.replace(/(["'\(])\/\/(?!\/)/g, '$1https://');
+    normalized = normalized.replace(/(["'(])\/\/(?!\/)/g, '$1https://');
 
     // Collapse duplicated paragraph tags produced by themes that wrap prose twice
     normalized = this.collapseDuplicateParagraphs(normalized);
@@ -659,8 +689,10 @@ export class ResumeService {
   private collapseDuplicateParagraphs(html: string): string {
     let current = html;
     let previous: string;
-    const blockPrefixPattern = /(<(li|div|section|article|td|th)[^>]*>)\s*<p>\s*<p>/gi;
-    const blockSuffixPattern = /<\/p>\s*<\/p>\s*(<\/(li|div|section|article|td|th)>)/gi;
+    const blockPrefixPattern =
+      /(<(li|div|section|article|td|th)[^>]*>)\s*<p>\s*<p>/gi;
+    const blockSuffixPattern =
+      /<\/p>\s*<\/p>\s*(<\/(li|div|section|article|td|th)>)/gi;
 
     do {
       previous = current;
