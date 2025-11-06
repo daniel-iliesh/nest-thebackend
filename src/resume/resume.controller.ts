@@ -53,13 +53,17 @@ export class ResumeController {
     }
 
     if (sanitizedFormat === 'html') {
-      const { html, theme: resolvedTheme } =
-        await this.resumeService.renderResumeHtml(resume, sanitizedTheme);
+      const {
+        html,
+        theme: resolvedTheme,
+        cacheKey,
+      } = await this.resumeService.renderResumeHtml(resume, sanitizedTheme);
 
       const { id } = await this.resumeService.persistRenderedResume({
         html,
         resume,
         theme: resolvedTheme,
+        cacheKey,
       });
 
       reply.header('Content-Type', 'application/json; charset=utf-8').send({

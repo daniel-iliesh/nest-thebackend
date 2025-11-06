@@ -10,11 +10,11 @@ import type { JSONSchema7 } from 'json-schema';
 import resumeSchema from '@jsonresume/schema';
 import type { Browser, PuppeteerNode } from 'puppeteer';
 import { build } from 'esbuild';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, unlink, writeFile } from 'node:fs/promises';
 
 import {
   RESUME_THEME_REGISTRY,
@@ -25,6 +25,11 @@ import {
 export type ResumeFormat = 'pdf';
 
 type ResumePayload = Record<string, unknown>;
+
+type CachedResumeRecord = {
+  id: string;
+  html: string;
+};
 
 // eslint-disable-next-line @typescript-eslint/no-implied-eval
 const dynamicImportModule = new Function(
@@ -39,6 +44,7 @@ export class ResumeService {
   private readonly schema = resumeSchema as unknown as JSONSchema7;
   private readonly require = createRequire(__filename);
   private readonly storageRoot = join(process.cwd(), 'storage', 'resumes');
+  private readonly cacheIndexRoot = join(this.storageRoot, 'cache-index');
   private readonly bundleCacheRoot = join(
     process.cwd(),
     '.cache',
@@ -47,8 +53,10 @@ export class ResumeService {
 
   private readonly themePromises = new Map<string, Promise<unknown>>();
   private readonly bundledThemeUrls = new Map<string, Promise<string>>();
+  private readonly resumeCache = new Map<string, string>();
   private puppeteerPromise?: Promise<PuppeteerNode>;
   private storageDirectoryPromise?: Promise<void>;
+  private cacheIndexDirectoryPromise?: Promise<void>;
 
   listAvailableThemes(): ResumeThemeKey[] {
     return Object.keys(RESUME_THEME_REGISTRY) as ResumeThemeKey[];
@@ -62,15 +70,19 @@ export class ResumeService {
     this.ensureFormatSupported(format);
     try {
       this.logger.debug('Starting resume PDF generation workflow.');
-      const { html, resolvedThemeKey } = await this.buildResumeHtml(
-        resume,
-        themeKey,
-      );
+      const {
+        html,
+        theme: resolvedThemeKey,
+        cacheHit,
+      } = await this.getOrCreateRenderedResume(resume, themeKey);
 
       this.logger.debug(
         `Rendered resume HTML with theme (${resolvedThemeKey}). Proceeding to PDF conversion.`,
       );
       this.logger.debug(`Generated HTML length: ${html.length}`);
+      if (cacheHit) {
+        this.logger.debug('Resume HTML retrieved from cache.');
+      }
       this.logger.debug(
         `Rendered HTML preview (first 500 chars): ${html.substring(0, 500)}`,
       );
@@ -105,19 +117,57 @@ export class ResumeService {
   async renderResumeHtml(
     resume: ResumePayload,
     themeKey?: string,
-  ): Promise<{ html: string; theme: ResumeThemeKey }> {
-    const { html, resolvedThemeKey } = await this.buildResumeHtml(
-      resume,
-      themeKey,
-    );
+  ): Promise<{ html: string; theme: ResumeThemeKey; cacheKey: string }> {
+    const { html, theme, cacheHit, cacheKey } =
+      await this.getOrCreateRenderedResume(resume, themeKey);
 
     this.logger.debug(
-      `Rendered resume HTML with theme (${resolvedThemeKey}). Generated HTML length: ${html.length}`,
+      `Rendered resume HTML with theme (${theme}). Generated HTML length: ${html.length}. Cache hit: ${cacheHit}.`,
     );
 
     return {
       html,
+      theme,
+      cacheKey,
+    };
+  }
+
+  async getOrCreateRenderedResume(
+    resume: ResumePayload,
+    themeKey?: string,
+  ): Promise<{
+    id: string;
+    html: string;
+    theme: ResumeThemeKey;
+    cacheHit: boolean;
+    cacheKey: string;
+  }> {
+    const { html, resolvedThemeKey, cacheKey, cacheId } =
+      await this.buildResumeHtml(resume, themeKey);
+
+    if (cacheId) {
+      return {
+        id: cacheId,
+        html,
+        theme: resolvedThemeKey,
+        cacheHit: true,
+        cacheKey,
+      };
+    }
+
+    const { id } = await this.persistRenderedResume({
+      html,
+      resume,
       theme: resolvedThemeKey,
+      cacheKey,
+    });
+
+    return {
+      id,
+      html,
+      theme: resolvedThemeKey,
+      cacheHit: false,
+      cacheKey,
     };
   }
 
@@ -125,9 +175,17 @@ export class ResumeService {
     html: string;
     resume: ResumePayload;
     theme: ResumeThemeKey;
+    cacheKey: string;
   }): Promise<{ id: string; htmlPath: string }> {
-    const { html, resume, theme } = params;
+    const { html, resume, theme, cacheKey } = params;
     await this.ensureStorageDirectory();
+    const existingId = await this.lookupCachedResumeId(cacheKey);
+    if (existingId) {
+      return {
+        id: existingId,
+        htmlPath: this.resolveHtmlFilePath(existingId),
+      };
+    }
     const id = randomUUID();
     const recordDir = this.resolveRecordDirectory(id);
 
@@ -145,6 +203,7 @@ export class ResumeService {
         JSON.stringify(
           {
             theme,
+            cacheKey,
             createdAt: new Date().toISOString(),
           },
           null,
@@ -153,6 +212,8 @@ export class ResumeService {
         'utf8',
       ),
     ]);
+
+    await this.registerCacheEntry(cacheKey, id);
 
     return { id, htmlPath: this.resolveHtmlFilePath(id) };
   }
@@ -365,17 +426,34 @@ export class ResumeService {
   private async buildResumeHtml(
     resume: ResumePayload,
     themeKey?: string,
-  ): Promise<{ html: string; resolvedThemeKey: ResumeThemeKey }> {
+  ): Promise<{
+    html: string;
+    resolvedThemeKey: ResumeThemeKey;
+    cacheKey: string;
+    cacheId?: string;
+  }> {
     this.ensureValidResume(resume);
 
     const { key: resolvedThemeKey, packageName: themePackageName } =
       this.resolveTheme(themeKey, resume);
+
+    const cacheKey = this.createResumeCacheKey(resume, resolvedThemeKey);
+    const cached = await this.loadCachedResume(cacheKey);
+    if (cached) {
+      return {
+        html: this.normalizeRenderedHtml(cached.html),
+        resolvedThemeKey,
+        cacheKey,
+        cacheId: cached.id,
+      };
+    }
 
     const html = await this.renderResumeWithTheme(resume, themePackageName);
 
     return {
       html: this.normalizeRenderedHtml(html),
       resolvedThemeKey,
+      cacheKey,
     };
   }
 
@@ -409,6 +487,141 @@ export class ResumeService {
     }
 
     await this.storageDirectoryPromise;
+  }
+
+  private async ensureCacheIndexDirectory(): Promise<void> {
+    if (!this.cacheIndexDirectoryPromise) {
+      this.cacheIndexDirectoryPromise = mkdir(this.cacheIndexRoot, {
+        recursive: true,
+      }).then(() => undefined);
+    }
+
+    await this.cacheIndexDirectoryPromise;
+  }
+
+  private resolveCacheIndexPath(cacheKey: string): string {
+    return join(this.cacheIndexRoot, `${cacheKey}.json`);
+  }
+
+  private async lookupCachedResumeId(
+    cacheKey: string,
+  ): Promise<string | undefined> {
+    if (this.resumeCache.has(cacheKey)) {
+      return this.resumeCache.get(cacheKey);
+    }
+
+    try {
+      await this.ensureCacheIndexDirectory();
+      const content = await readFile(
+        this.resolveCacheIndexPath(cacheKey),
+        'utf8',
+      );
+      const parsed = JSON.parse(content) as { id?: unknown };
+      if (parsed && typeof parsed.id === 'string') {
+        this.resumeCache.set(cacheKey, parsed.id);
+        return parsed.id;
+      }
+      this.logger.warn(
+        `Cache index entry for key ${cacheKey} is malformed and will be ignored.`,
+      );
+      await this.removeCacheEntry(cacheKey);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException)?.code !== 'ENOENT') {
+        this.logger.warn(
+          `Failed to read cache index entry for key ${cacheKey}.`,
+          error,
+        );
+      }
+    }
+
+    return undefined;
+  }
+
+  private async loadCachedResume(
+    cacheKey: string,
+  ): Promise<CachedResumeRecord | undefined> {
+    const cachedId = await this.lookupCachedResumeId(cacheKey);
+    if (!cachedId) {
+      return undefined;
+    }
+
+    try {
+      const html = await readFile(this.resolveHtmlFilePath(cachedId), 'utf8');
+      return { id: cachedId, html };
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException)?.code === 'ENOENT') {
+        this.logger.warn(
+          `Cached resume data missing for key ${cacheKey}. Removing cache entry.`,
+        );
+        await this.removeCacheEntry(cacheKey);
+        return undefined;
+      }
+
+      this.logger.warn(
+        `Failed to load cached resume for key ${cacheKey}.`,
+        error,
+      );
+      return undefined;
+    }
+  }
+
+  private async registerCacheEntry(
+    cacheKey: string,
+    id: string,
+  ): Promise<void> {
+    this.resumeCache.set(cacheKey, id);
+    try {
+      await this.ensureCacheIndexDirectory();
+      await writeFile(
+        this.resolveCacheIndexPath(cacheKey),
+        JSON.stringify({ id }, null, 2),
+        'utf8',
+      );
+    } catch (error) {
+      this.logger.warn(
+        `Unable to persist cache index entry for key ${cacheKey}.`,
+        error,
+      );
+    }
+  }
+
+  private async removeCacheEntry(cacheKey: string): Promise<void> {
+    this.resumeCache.delete(cacheKey);
+    try {
+      await unlink(this.resolveCacheIndexPath(cacheKey));
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException)?.code !== 'ENOENT') {
+        this.logger.warn(
+          `Failed to remove cache index entry for key ${cacheKey}.`,
+          error,
+        );
+      }
+    }
+  }
+
+  private createResumeCacheKey(
+    resume: ResumePayload,
+    theme: ResumeThemeKey,
+  ): string {
+    const hash = createHash('sha256');
+    hash.update(JSON.stringify(this.stableSortResume(resume)));
+    hash.update(theme);
+    return hash.digest('hex');
+  }
+
+  private stableSortResume(value: unknown): unknown {
+    if (Array.isArray(value)) {
+      return value.map((entry) => this.stableSortResume(entry));
+    }
+
+    if (value && typeof value === 'object') {
+      const entries = Object.entries(value as Record<string, unknown>)
+        .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+        .map(([key, val]) => [key, this.stableSortResume(val)]);
+      return Object.fromEntries(entries);
+    }
+
+    return value;
   }
 
   private async printHtmlToPdf(html: string): Promise<Buffer> {
