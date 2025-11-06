@@ -1,4 +1,5 @@
 import { NestFactory } from '@nestjs/core';
+import { ConfigService } from '@nestjs/config';
 import {
   FastifyAdapter,
   NestFastifyApplication,
@@ -11,6 +12,15 @@ async function bootstrap() {
     AppModule,
     new FastifyAdapter(),
   );
+
+  const configService = app.get(ConfigService);
+  const frontendOrigins =
+    configService.get<string[]>('frontend.origins', { infer: true }) ?? [];
+
+  app.enableCors({
+    origin: frontendOrigins,
+    methods: ['GET', 'POST', 'OPTIONS'],
+  });
 
   const config = new DocumentBuilder()
     .setTitle('The Backend')
