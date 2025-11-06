@@ -13,10 +13,9 @@ export default () => {
 
   return {
     frontend: {
-      origins:
-        configuredOrigins.length > 0
-          ? configuredOrigins
-          : DEFAULT_FRONTEND_ORIGINS,
+      origins: Array.from(
+        new Set([...DEFAULT_FRONTEND_ORIGINS, ...configuredOrigins]),
+      ),
     },
   };
 };
