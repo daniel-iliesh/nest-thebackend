@@ -17,6 +17,12 @@ import { ResumeService, type ResumeFormat } from './resume.service';
 export class ResumeController {
   constructor(private readonly resumeService: ResumeService) {}
 
+  @Get('themes')
+  @HttpCode(HttpStatus.OK)
+  getThemes(): string[] {
+    return this.resumeService.listAvailableThemes();
+  }
+
   @Post()
   @HttpCode(HttpStatus.OK)
   async createResume(

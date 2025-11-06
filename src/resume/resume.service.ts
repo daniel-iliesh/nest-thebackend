@@ -50,6 +50,10 @@ export class ResumeService {
   private puppeteerPromise?: Promise<PuppeteerNode>;
   private storageDirectoryPromise?: Promise<void>;
 
+  listAvailableThemes(): ResumeThemeKey[] {
+    return Object.keys(RESUME_THEME_REGISTRY) as ResumeThemeKey[];
+  }
+
   async generatePdf(
     resume: ResumePayload,
     format: ResumeFormat,
