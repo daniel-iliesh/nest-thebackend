@@ -4,11 +4,11 @@ const parseOrigins = (value?: string): string[] =>
     .map((origin) => origin.trim())
     .filter(Boolean) ?? [];
 
-const DEFAULT_FRONTEND_ORIGINS = ["https://daniel-iliesh.github.io"];
+const DEFAULT_FRONTEND_ORIGINS = ["https://daniel-iliesh.github.io", "https://daniel-ilies.eu"];
 
 export default () => {
   const configuredOrigins = parseOrigins(
-    process.env.FRONTEND_ORIGINS ?? process.env.FRONT_ORIGIN,
+    process.env.FRONT_ORIGINS,
   );
 
   return {
