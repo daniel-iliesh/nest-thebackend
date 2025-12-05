@@ -1,7 +1,14 @@
 # compiled output
 /dist
-/node_modules
 /build
+*.tsbuildinfo
+*.js.map
+*.d.ts.map
+
+# Dependencies
+**/node_modules
+.pnp
+.pnp.js
 
 # Logs
 logs
@@ -14,10 +21,16 @@ lerna-debug.log*
 
 # OS
 .DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
 
 # Tests
 /coverage
 /.nyc_output
+*.lcov
+.nyc_output
 
 # IDEs and editors
 /.idea
@@ -27,6 +40,7 @@ lerna-debug.log*
 *.launch
 .settings/
 *.sublime-workspace
+*.sublime-project
 
 # IDE - VSCode
 .vscode/*
@@ -55,5 +69,26 @@ pids
 # Diagnostic reports (https://nodejs.org/api/report.html)
 report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 
+# Application specific
 storage/
 .cache
+
+# Monorepo / Workspace
+.turbo
+.vercel
+.next
+out
+
+# Package build outputs (keep source code, ignore builds)
+packages/*/dist
+packages/*/build
+packages/*/.next
+packages/*/out
+packages/*/.turbo
+packages/*/.cache
+packages/*/coverage
+packages/*/.storybook-static
+packages/*/storybook-static
+
+# TypeScript
+*.tsbuildinfo
