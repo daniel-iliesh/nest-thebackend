@@ -1,5 +1,5 @@
 FROM node:20-slim AS base
-ARG PNPM_VERSION=8.15.7
+ARG PNPM_VERSION=10.15.1
 ENV PNPM_HOME="/root/.local/share/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
 RUN corepack enable && corepack prepare "pnpm@${PNPM_VERSION}" --activate
@@ -63,6 +63,9 @@ COPY packages ./packages
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
 
+ENV CI=true
+ENV NPM_CONFIG_IGNORE_SCRIPTS=true
+# Skip lifecycle scripts during pruning to avoid prepare/build for linked themes
 RUN pnpm prune --prod
 RUN mkdir -p ${PUPPETEER_CACHE_DIR} && pnpm exec puppeteer browsers install chrome
 

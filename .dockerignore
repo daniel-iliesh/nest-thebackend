@@ -1,0 +1,23 @@
+# dependencies
+node_modules
+**/node_modules
+.pnpm-store
+**/.pnpm-store
+
+# build output
+dist
+**/dist
+
+# tooling/cache
+.turbo
+.cache
+coverage
+*.log
+npm-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# vcs
+.git
+.gitignore
+
