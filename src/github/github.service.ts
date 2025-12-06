@@ -19,6 +19,33 @@ export class GithubService {
   private readonly username: string;
   private readonly logger = new Logger(GithubService.name);
 
+  /**
+   * Try branches in order until content is found.
+   */
+  private async getContentWithBranchFallback(
+    owner: string,
+    repo: string,
+    path: string,
+    branches: string[],
+  ) {
+    const uniqueBranches = Array.from(new Set(branches));
+    let lastError: any;
+
+    for (const ref of uniqueBranches) {
+      try {
+        return await this.octokit.repos.getContent({ owner, repo, path, ref });
+      } catch (error: any) {
+        if (error instanceof RequestError && error.status === 404) {
+          lastError = error;
+          continue;
+        }
+        throw error;
+      }
+    }
+
+    throw lastError ?? new Error(`Content ${path} not found in ${owner}/${repo}`);
+  }
+
   constructor(
     @Inject(CustomModule.OCTOKIT_INSTANCE) private readonly octokit: Octokit,
     private readonly configService: ConfigService,
@@ -69,16 +96,28 @@ export class GithubService {
     }
   };
 
-  getRepoReadme = async (repoName: string) => {
+  getRepoReadme = async (repoName: string, branch?: string) => {
     try {
-      const { data } = await this.octokit.repos.getReadme({
-        owner: process.env.GITHUB_USERNAME as string,
-        repo: repoName,
-        mediaType: {
-          format: 'markdown',
-        },
-      });
-      return Buffer.from(data.content, 'base64').toString('utf-8');
+      const branches = branch ? [branch, 'main', 'master'] : ['main', 'master'];
+      for (const ref of Array.from(new Set(branches))) {
+        try {
+          const { data } = await this.octokit.repos.getReadme({
+            owner: process.env.GITHUB_USERNAME as string,
+            repo: repoName,
+            mediaType: {
+              format: 'markdown',
+            },
+            ref,
+          });
+          return Buffer.from(data.content, 'base64').toString('utf-8');
+        } catch (error: any) {
+          if (error instanceof RequestError && error.status === 404) {
+            continue;
+          }
+          throw error;
+        }
+      }
+      return null;
     } catch (error: any) {
       if (error.status === 404) {
         this.logger.warn(`README not found for repo ${repoName}`);
@@ -143,16 +182,29 @@ export class GithubService {
   private async getRepoReadmeByOwner(
     owner: string,
     repo: string,
+    branch?: string,
   ): Promise<string | null> {
     try {
-      const { data } = await this.octokit.repos.getReadme({
-        owner,
-        repo,
-        mediaType: {
-          format: 'markdown',
-        },
-      });
-      return Buffer.from(data.content, 'base64').toString('utf-8');
+      const branches = branch ? [branch, 'main', 'master'] : ['main', 'master'];
+      for (const ref of Array.from(new Set(branches))) {
+        try {
+          const { data } = await this.octokit.repos.getReadme({
+            owner,
+            repo,
+            mediaType: {
+              format: 'markdown',
+            },
+            ref,
+          });
+          return Buffer.from(data.content, 'base64').toString('utf-8');
+        } catch (error: any) {
+          if (error instanceof RequestError && error.status === 404) {
+            continue;
+          }
+          throw error;
+        }
+      }
+      return null;
     } catch (error: any) {
       if (error.status === 404) {
         this.logger.warn(`README not found for ${owner}/${repo}`);
@@ -173,12 +225,13 @@ export class GithubService {
     branch?: string,
   ): Promise<string | null> {
     try {
-      const { data } = await this.octokit.repos.getContent({
+      const branches = branch ? [branch, 'main', 'master'] : ['main', 'master'];
+      const { data } = await this.getContentWithBranchFallback(
         owner,
         repo,
         path,
-        ref: branch,
-      });
+        branches,
+      );
 
       if (Array.isArray(data) || !('content' in data)) {
         return null;
@@ -224,11 +277,12 @@ export class GithubService {
     repo: string,
   ): Promise<string | null> {
     try {
-      const { data } = await this.octokit.repos.getContent({
+      const { data } = await this.getContentWithBranchFallback(
         owner,
         repo,
-        path: 'favimage.png',
-      });
+        'favimage.png',
+        ['main', 'master'],
+      );
 
       if (Array.isArray(data)) {
         throw new Error('Unexpected response format');
@@ -480,11 +534,12 @@ export class GithubService {
 
   getFavimage = async (repoName: string) => {
     try {
-      const { data } = await this.octokit.repos.getContent({
-        owner: this.username,
-        repo: repoName,
-        path: 'favimage.png',
-      });
+      const { data } = await this.getContentWithBranchFallback(
+        this.username,
+        repoName,
+        'favimage.png',
+        ['main', 'master'],
+      );
 
       if (Array.isArray(data)) {
         throw new Error('Unexpected response format');
@@ -571,12 +626,13 @@ export class GithubService {
         this.logger.warn(`Could not determine privacy status for ${owner}/${repo}`);
       }
 
-      const { data } = await this.octokit.repos.getContent({
+      const branches = branch ? [branch, 'main', 'master'] : ['main', 'master'];
+      const { data } = await this.getContentWithBranchFallback(
         owner,
         repo,
-        path: folderPath,
-        ref: branch,
-      });
+        folderPath,
+        branches,
+      );
 
       // If it's a single file, return empty array (we want folders only)
       if (!Array.isArray(data)) {
@@ -662,12 +718,13 @@ export class GithubService {
     branch?: string,
   ): Promise<{ content: Buffer; contentType: string }> => {
     try {
-      const { data } = await this.octokit.repos.getContent({
+      const branches = branch ? [branch, 'main', 'master'] : ['main', 'master'];
+      const { data } = await this.getContentWithBranchFallback(
         owner,
         repo,
-        path: filePath,
-        ref: branch,
-      });
+        filePath,
+        branches,
+      );
 
       if (Array.isArray(data)) {
         throw new Error('Expected file, got directory');
