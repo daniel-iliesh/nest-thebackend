@@ -539,7 +539,7 @@ export class GithubService {
   }
 
   /**
-   * Get media files (images) from a folder in a repository
+   * Get media files (images/videos) from a folder in a repository
    * Supports both public and private repos
    * @param repoIdentifier - Can be "repo" or "owner/repo"
    * @param folderPath - Path to the folder (e.g., 'public', 'media', 'images')
@@ -586,8 +586,8 @@ export class GithubService {
         return [];
       }
 
-      // Supported image extensions
-      const imageExtensions = [
+      // Supported media extensions
+      const mediaExtensions = [
         '.jpg',
         '.jpeg',
         '.png',
@@ -598,16 +598,18 @@ export class GithubService {
         '.ico',
         '.tiff',
         '.tif',
+        '.mp4',
+        '.webm',
       ];
 
-      // Filter for image files only
+      // Filter for media files only
       const mediaFiles: MediaFile[] = data
         .filter((item) => {
           if (item.type !== 'file') return false;
           const extension = item.name
             .toLowerCase()
             .substring(item.name.lastIndexOf('.'));
-          return imageExtensions.includes(extension);
+          return mediaExtensions.includes(extension);
         })
         .map((item) => {
           // For private repos, use proxied URL through our backend
@@ -691,6 +693,8 @@ export class GithubService {
         '.ico': 'image/x-icon',
         '.tiff': 'image/tiff',
         '.tif': 'image/tiff',
+        '.mp4': 'video/mp4',
+        '.webm': 'video/webm',
       };
 
       const contentType = contentTypeMap[extension] || 'application/octet-stream';
